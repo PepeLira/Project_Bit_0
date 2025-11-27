@@ -2,9 +2,10 @@
 
 ## "Una consola para aprender a programar e interactuar con sensores, todo en el mismo lugar"
 
-
-<img src="./assets/Project_bit-0.jpeg" width="400" >
-<img src="./assets/pocket-terminal.png"  width="400">
+<p align="center">
+  <img src="./assets/Project_bit-0.jpeg" width="300" />
+  <img src="./assets/pocket-terminal.png" width="300" />
+</p>
 
 ## Descripción del Proyecto
 
@@ -31,7 +32,7 @@ La placa utiliza un microcontrolador RP2040 programable para manejar una matriz 
 
 ## Software
 
-En el lado del software, la placa ejecuta firmware de código abierto en el RP2040. El Luckfox utiliza una versión compilada personalizada de Buildroot Linux (basada en el [Luckfox Lyra SDK](https://wiki.luckfox.com/Luckfox-Lyra/SDK/)) con controladores personalizados desarrollados para la pantalla, el teclado y el audio. Cuenta con compatibilidad con el motor Pico-8 Fantasy Console, lo que permite a los estudiantes desarrollar juegos interactivos utilizando un lenguaje de programación de alto nivel como Lua. Planeamos usar este software inicialmente para probar y validar nuestro piloto. Una interfaz personalizada basada en terminal está en nuestra hoja de ruta para el desarrollo futuro.
+En el lado del software, la placa ejecuta firmware de código abierto en el RP2040. El Luckfox utiliza una versión compilada personalizada de Buildroot Linux (basada en el [Luckfox Lyra SDK](https://wiki.luckfox.com/Luckfox-Lyra/SDK/) y Kernel 6.1) con controladores personalizados desarrollados para la pantalla, el teclado y el audio. Cuenta con compatibilidad con el motor Pico-8 Fantasy Console, lo que permite a los estudiantes desarrollar juegos interactivos utilizando un lenguaje de programación de alto nivel como Lua. Planeamos usar este software inicialmente para probar y validar nuestro piloto. Una interfaz personalizada basada en terminal está en nuestra hoja de ruta para el desarrollo futuro.
 
 ## Uso de la Consola
 
@@ -109,5 +110,5 @@ Este repositorio está organizado de la siguiente manera:
 
 ## Licencia
 
-[Por definir...]
+Este proyecto está bajo la Licencia MIT. Consulta el archivo [LICENSE](LICENSE) para más detalles.
 
