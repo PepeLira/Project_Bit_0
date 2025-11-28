@@ -56,39 +56,6 @@ El proyecto utiliza el SDK de Luckfox Lyra para construir la imagen del sistema 
     La carpeta `buildroot/` de este repositorio contiene las configuraciones y drivers específicos para el Pocket Terminal (pantalla, teclado, audio). Estos archivos deben copiarse en la estructura del SDK para sobrescribir o complementar los archivos originales.
     *(Nota: La estructura de carpetas actual en `buildroot/` refleja una ruta absoluta de desarrollo. Asegúrate de copiar los archivos a las rutas correspondientes dentro de tu instalación del SDK).*
 
-## Metodología
-
-- Sesiones cortas basadas en proyectos para desarrollar programas, microjuegos y animaciones en Pico-8
-- Trabajo colaborativo en parejas o grupos con asistencia de estudiantes de ingeniería
-- Proyectos que combinan software con sensores: acelerómetros y LED programables
-- El profesor como facilitador con materiales guiados
-- Concursos especiales diseñados para fomentar la creatividad y las habilidades de resolución de problemas
-
-## Público Objetivo
-
-- **Nivel:** 6º básico a 2º medio
-- **Contexto:** Escuelas públicas y privadas subvencionadas
-- **Piloto:** Múltiples clases y escuelas
-
-## Impacto Esperado
-
-### En Estudiantes
-- Inspirar curiosidad en software y hardware
-- Mayor interés en ciencia y tecnología
-- Habilidades de programación y lógica
-- Competencias básicas de electrónica
-- Una mejor comprensión de cómo funcionan las computadoras
-
-### En Instituciones
-- Mejora continua de materiales a lo largo del tiempo
-- Recursos concretos para profesores
-- Fortalecimiento del área de tecnología
-- Desafíos divertidos y atractivos para los estudiantes
-
-## Experiencias Previas
-
-Este proyecto se basa en la experiencia de los Campamentos de Verano de la Escuela de Ingeniería de la Universidad de los Andes. Estos programas de dos semanas introducen a los niños a desafíos computacionales, electrónicos y de diseño 3D. Los estudiantes obtienen acceso a herramientas especializadas y trabajan junto a estudiantes de ingeniería reales que los guían a través del proceso. Siempre con el objetivo de transformar su enfoque para la resolución de problemas, o simplemente proporcionar una experiencia divertida y colaborativa con sus compañeros.
-
 ## Estructura del Repositorio
 
 Este repositorio está organizado de la siguiente manera:
