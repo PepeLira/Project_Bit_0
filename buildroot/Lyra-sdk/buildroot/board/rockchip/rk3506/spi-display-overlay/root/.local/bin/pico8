@@ -1,0 +1,10 @@
+#!/bin/sh
+# Launch PICO-8 on the SPI framebuffer with no audio.
+
+export SDL_VIDEODRIVER=directfb
+export SDL_AUDIODRIVER=dummy
+# Replace eventX with the real one you found above:
+export DFBARGS="system=fbdev,no-cursor,keyboard=linux_input,disable-module=keyboard"
+
+# ./pico8_dyn -windowed 0 -width 240 -height 320 -pixel_perfect 0
+~/pico-8/pico8_dyn -home /root/pico-8 -windowed 0 -width 256 -height 320 -pixel_perfect 0

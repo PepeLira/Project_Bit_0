@@ -27,9 +27,10 @@
 #define REG_INT_STATUS		0x04
 
 /* Register bit definitions */
-#define KEY_STATUS_SHIFT_BIT	BIT(0)
-#define KEY_STATUS_ALT_BIT	BIT(1)
-#define KEY_STATUS_FN_BIT	BIT(2)
+#define KEY_STATUS_CTRL_BIT	BIT(0)
+#define KEY_STATUS_SHIFT_BIT	BIT(1)
+#define KEY_STATUS_ALT_BIT	BIT(2)
+#define KEY_STATUS_FN_BIT	BIT(3)
 #define KEY_STATUS_FIFO_MASK	0xF0
 #define KEY_STATUS_FIFO_SHIFT	4
 
@@ -42,12 +43,13 @@
 #define FIFO_KEYCODE_SHIFT	2
 
 #define INT_STATUS_FIFO_OVERFLOW	BIT(0)
-#define INT_STATUS_SHIFT_CHANGE		BIT(1)
-#define INT_STATUS_FN_CHANGE		BIT(2)
+#define INT_STATUS_CTRL_CHANGE		BIT(1)
+#define INT_STATUS_SHIFT_CHANGE		BIT(2)
 #define INT_STATUS_ALT_CHANGE		BIT(3)
-#define INT_STATUS_KEY_EVENT		BIT(4)
-#define INT_STATUS_MOUSE_EVENT		BIT(5)
-#define INT_STATUS_POWER_BTN		BIT(6)
+#define INT_STATUS_FN_CHANGE		BIT(4)
+#define INT_STATUS_KEY_EVENT		BIT(5)
+#define INT_STATUS_MOUSE_EVENT		BIT(6)
+#define INT_STATUS_POWER_BTN		BIT(7)
 
 #define MAX_KEYCODES		53
 #define POLL_INTERVAL_MS	10
@@ -62,6 +64,15 @@ struct lyra_kbd_data {
 	/* Track last pressed key for each keycode to ensure proper release */
 	unsigned short last_key_pressed[MAX_KEYCODES];
 	
+	/* Track if we synthesized SHIFT for each keycode */
+	bool shift_synthesized[MAX_KEYCODES];
+	
+	/* Track active mouse direction keys for movement (keycodes 49-52) */
+	bool mouse_up_active;
+	bool mouse_down_active;
+	bool mouse_left_active;
+	bool mouse_right_active;
+	
 	/* Mouse speed multiplier (percentage: 100 = 1x, 200 = 2x) */
 	int mouse_speed_x;
 	int mouse_speed_y;
@@ -75,6 +86,19 @@ struct lyra_kbd_data {
 
 /* Static keymap based on keyboard_layout.json */
 /* Index = keycode (0-52), value = Linux key code */
+
+/* Track which FN keys need SHIFT synthesized for shifted characters */
+static const bool fn_needs_shift[MAX_KEYCODES] = {
+	[7] = true,   /* underscore (_) */
+	[9] = true,   /* plus (+) */
+	[14] = true,  /* double quote (") */
+	[15] = true,  /* left brace ({) */
+	[17] = true,  /* right brace (}) */
+	[24] = true,  /* colon (:) */
+	[26] = true,  /* question mark (?) */
+	[36] = true,  /* tilde (~) */
+	[38] = true,  /* pipe (|) */
+};
 
 /* Normal layer (no modifiers) */
 static const unsigned short keymap_normal[MAX_KEYCODES] = {
@@ -127,10 +151,10 @@ static const unsigned short keymap_normal[MAX_KEYCODES] = {
 	KEY_J,		/* 46: FN5 */
 	KEY_K,		/* 47: FN6 */
 	BTN_LEFT,	/* 48: FN8 - mouse left click */
-	KEY_DOWN,	/* 49: FN9 - used for mouse down when not in mouse mode */
-	KEY_UP,		/* 50: FN10 - used for mouse up when not in mouse mode */
-	KEY_RIGHT,	/* 51: FN11 - used for mouse right when not in mouse mode */
-	KEY_LEFT,	/* 52: FN12 - used for mouse left when not in mouse mode */
+	KEY_RESERVED,	/* 49: FN9 - MOUSE_DOWN (movement, not a key) */
+	KEY_RESERVED,	/* 50: FN10 - MOUSE_UP (movement, not a key) */
+	KEY_RESERVED,	/* 51: FN11 - MOUSE_RIGHT (movement, not a key) */
+	KEY_RESERVED,	/* 52: FN12 - MOUSE_LEFT (movement, not a key) */
 };
 
 /* Shift layer */
@@ -184,10 +208,10 @@ static const unsigned short keymap_shift[MAX_KEYCODES] = {
 	KEY_J,		/* 46: J */
 	KEY_K,		/* 47: K */
 	BTN_RIGHT,	/* 48: FN8 - mouse right click */
-	KEY_DOWN,	/* 49: FN9 */
-	KEY_UP,		/* 50: FN10 */
-	KEY_RIGHT,	/* 51: FN11 */
-	KEY_LEFT,	/* 52: FN12 */
+	KEY_RESERVED,	/* 49: FN9 - MOUSE_SCROLL_DOWN (scroll, not a key) */
+	KEY_RESERVED,	/* 50: FN10 - MOUSE_SCROLL_UP (scroll, not a key) */
+	KEY_RESERVED,	/* 51: FN11 - MOUSE_SCROLL_RIGHT (scroll, not a key) */
+	KEY_RESERVED,	/* 52: FN12 - MOUSE_SCROLL_LEFT (scroll, not a key) */
 };
 
 /* FN layer */
@@ -201,7 +225,7 @@ static const unsigned short keymap_fn[MAX_KEYCODES] = {
 	KEY_F10,	/* 6: G1 */
 	KEY_MINUS,	/* 7: _ */
 	KEY_MINUS,	/* 8: - */
-	KEY_EQUAL,	/* 9: + */
+	KEY_EQUAL,	/* shift+= 9: + */
 	KEY_EQUAL,	/* 10: = */
 	KEY_BACKSLASH,	/* 11: \ */
 	KEY_F11,	/* 12: F11 */
@@ -230,7 +254,7 @@ static const unsigned short keymap_fn[MAX_KEYCODES] = {
 	KEY_F1,		/* 35: F1 */
 	KEY_GRAVE,	/* 36: ~ (shift+`) */
 	KEY_FN,		/* 37: FN */
-	KEY_102ND,	/* 38: | */
+	KEY_BACKSLASH,	/* 38: | (shift+\\) */
 	KEY_LEFTBRACE,	/* 39: [ */
 	KEY_RIGHTBRACE,	/* 40: ] */
 	KEY_RIGHTSHIFT,	/* 41: RSHIFT */
@@ -241,10 +265,10 @@ static const unsigned short keymap_fn[MAX_KEYCODES] = {
 	KEY_A,		/* 46: FN5+FN = A (gamepad) */
 	KEY_B,		/* 47: FN6+FN = B (gamepad) */
 	BTN_MIDDLE,	/* 48: FN8+FN = middle click */
-	KEY_DOWN,	/* 49: FN9+FN = DOWN */
-	KEY_UP,		/* 50: FN10+FN = UP */
-	KEY_RIGHT,	/* 51: FN11+FN = RIGHT */
-	KEY_LEFT,	/* 52: FN12+FN = LEFT */
+	KEY_DOWN,	/* 49: FN9+FN = DOWN arrow */
+	KEY_UP,		/* 50: FN10+FN = UP arrow */
+	KEY_RIGHT,	/* 51: FN11+FN = RIGHT arrow */
+	KEY_LEFT,	/* 52: FN12+FN = LEFT arrow */
 };
 
 static int lyra_kbd_read_reg(struct i2c_client *client, u8 reg)
@@ -265,6 +289,7 @@ static void lyra_kbd_process_key_event(struct lyra_kbd_data *kbd, u8 keycode,
 	int ret;
 	u8 key_status;
 	bool shift, alt, fn;
+	bool synthesize_shift = false;
 	
 	if (keycode >= MAX_KEYCODES) {
 		dev_warn(&kbd->client->dev, "Invalid keycode: %d\n", keycode);
@@ -282,28 +307,87 @@ static void lyra_kbd_process_key_event(struct lyra_kbd_data *kbd, u8 keycode,
 	fn = (key_status & KEY_STATUS_FN_BIT) != 0;
 	
 	/* Debug logging */
-	dev_info(&kbd->client->dev, "Key event: code=%d pressed=%d shift=%d alt=%d fn=%d\n",
+	dev_dbg(&kbd->client->dev, "Key event: code=%d pressed=%d shift=%d alt=%d fn=%d\n",
 		 keycode, pressed, shift, alt, fn);
 	
-	/* Handle modifier keys - report them directly */
-	if (keycode == 25 || keycode == 41) { /* LSHIFT/RSHIFT */
-		/* Shift is handled via REG_KEY_STATUS in lyra_kbd_sync_modifiers */
+	/*
+	 * Modifier keys (FN:37, RSHIFT:41, LSHIFT:25, ALT:33, CTRL:30) are
+	 * tracked by firmware in REG_KEY_STATUS and handled by
+	 * lyra_kbd_sync_modifiers(). Ignore their FIFO events to prevent
+	 * conflicts between FIFO and register state.
+	 */
+	if (keycode == 25 || keycode == 41 || keycode == 30 || 
+	    keycode == 33 || keycode == 37) {
 		return;
 	}
 	
-	if (keycode == 30) { /* ALT key */
-		/* Alt is handled via REG_KEY_STATUS in lyra_kbd_sync_modifiers */
-		return;
+	/*
+	 * Handle mouse movement/scroll keys (49-52).
+	 * In normal mode: mouse movement
+	 * In shift mode: mouse scroll
+	 * In FN mode: arrow keys (handled normally below)
+	 */
+	if (keycode >= 49 && keycode <= 52) {
+		if (!fn) {
+			/* Normal/Shift: Mouse movement or scroll */
+			switch (keycode) {
+			case 49: /* DOWN */
+				if (shift) {
+					/* Scroll down */
+					if (pressed)
+						input_report_rel(kbd->mouse_input, REL_WHEEL, -1);
+				} else {
+					/* Mouse movement down */
+					kbd->mouse_down_active = pressed;
+				}
+				break;
+			case 50: /* UP */
+				if (shift) {
+					/* Scroll up */
+					if (pressed)
+						input_report_rel(kbd->mouse_input, REL_WHEEL, 1);
+				} else {
+					/* Mouse movement up */
+					kbd->mouse_up_active = pressed;
+				}
+				break;
+			case 51: /* RIGHT */
+				if (shift) {
+					/* Scroll right (horizontal scroll) */
+					if (pressed)
+						input_report_rel(kbd->mouse_input, REL_HWHEEL, 1);
+				} else {
+					/* Mouse movement right */
+					kbd->mouse_right_active = pressed;
+				}
+				break;
+			case 52: /* LEFT */
+				if (shift) {
+					/* Scroll left (horizontal scroll) */
+					if (pressed)
+						input_report_rel(kbd->mouse_input, REL_HWHEEL, -1);
+				} else {
+					/* Mouse movement left */
+					kbd->mouse_left_active = pressed;
+				}
+				break;
+			}
+			
+			if (shift && pressed)
+				input_sync(kbd->mouse_input);
+			
+			return;
+		}
+		/* FN mode: Fall through to normal key handling (arrow keys) */
 	}
 	
-	if (keycode == 33) { /* CTRL key */
-		input_report_key(kbd->kbd_input, KEY_LEFTCTRL, pressed);
-		input_sync(kbd->kbd_input);
-		return;
-	}
-	
-	if (keycode == 37) { /* FN key - modifier only, don't report */
-		return;
+	/*
+	 * Determine if we need to synthesize SHIFT for FN layer.
+	 * Some FN layer characters (like +, {, }, ?, ~, |) require SHIFT
+	 * but we want them without user pressing SHIFT.
+	 */
+	if (fn && fn_needs_shift[keycode] && !shift) {
+		synthesize_shift = true;
 	}
 	
 	if (pressed) {
@@ -315,18 +399,19 @@ static void lyra_kbd_process_key_event(struct lyra_kbd_data *kbd, u8 keycode,
 		else
 			key = keymap_normal[keycode];
 		
-		/* Debug: what key are we reporting? */
-		dev_info(&kbd->client->dev, "  -> Reporting linux_keycode=%d\n", key);
+		/* Synthesize SHIFT press if needed for FN characters */
+		if (synthesize_shift) {
+			input_report_key(kbd->kbd_input, KEY_LEFTSHIFT, true);
+			kbd->shift_synthesized[keycode] = true;
+		}
 		
 		/* Store which key we pressed so we can release the same one */
 		kbd->last_key_pressed[keycode] = key;
-		dev_info(&kbd->client->dev, "  -> input_report_key(dev, %d, 1)\n", key);
 		input_event(kbd->kbd_input, EV_MSC, MSC_SCAN, keycode);
 		input_report_key(kbd->kbd_input, key, true);
 	} else {
 		/* On release, use the same key that was pressed to avoid mismatch */
 		key = kbd->last_key_pressed[keycode];
-		dev_info(&kbd->client->dev, "  -> Lookup last_key_pressed[%d] = %d\n", keycode, key);
 		if (key == 0) {
 			/* If we don't have a record, use current state (shouldn't happen) */
 			if (fn)
@@ -337,16 +422,19 @@ static void lyra_kbd_process_key_event(struct lyra_kbd_data *kbd, u8 keycode,
 				key = keymap_normal[keycode];
 		}
 		
-		dev_info(&kbd->client->dev, "  -> Releasing linux_keycode=%d\n", key);
-		
-		dev_info(&kbd->client->dev, "  -> input_report_key(dev, %d, 0)\n", key);
 		input_event(kbd->kbd_input, EV_MSC, MSC_SCAN, keycode);
 		input_report_key(kbd->kbd_input, key, false);
+		
+		/* Release synthesized SHIFT if we added it on press */
+		if (kbd->shift_synthesized[keycode]) {
+			input_report_key(kbd->kbd_input, KEY_LEFTSHIFT, false);
+			kbd->shift_synthesized[keycode] = false;
+		}
+		
 		kbd->last_key_pressed[keycode] = 0;
 	}
 	
 	input_sync(kbd->kbd_input);
-	dev_info(&kbd->client->dev, "  -> input_sync() called\n");
 }
 
 static void lyra_kbd_process_fifo(struct lyra_kbd_data *kbd)
@@ -356,7 +444,7 @@ static void lyra_kbd_process_fifo(struct lyra_kbd_data *kbd)
 	u8 event_type, keycode;
 	bool pressed;
 	
-	dev_info(&kbd->client->dev, "Processing FIFO cycle start\n");
+	dev_dbg(&kbd->client->dev, "Processing FIFO cycle start\n");
 	
 	/* Drain FIFO until hardware reports no more events or safety limit hit */
 	while (i < FIFO_MAX_READ) {
@@ -373,7 +461,7 @@ static void lyra_kbd_process_fifo(struct lyra_kbd_data *kbd)
 			break;
 		
 		/* Debug: log every FIFO read */
-		dev_info(&kbd->client->dev, "FIFO[%d]: raw=0x%02x type=%d code=%d\n",
+		dev_dbg(&kbd->client->dev, "FIFO[%d]: raw=0x%02x type=%d code=%d\n",
 			 i, fifo_data, event_type, keycode);
 		
 		switch (event_type) {
@@ -390,10 +478,10 @@ static void lyra_kbd_process_fifo(struct lyra_kbd_data *kbd)
 			 * release events are missed, especially for direct
 			 * GPIO keys (FN1-FN8).
 			 */
-			dev_info(&kbd->client->dev, "  -> Ignoring HOLD event for keycode %d\n", keycode);
+			dev_dbg(&kbd->client->dev, "Ignoring HOLD event for keycode %d\n", keycode);
 			goto next;
 		default:
-			dev_warn(&kbd->client->dev, "  -> Unknown event type: %d (raw=0x%02x)\n",
+			dev_warn(&kbd->client->dev, "Unknown event type: %d (raw=0x%02x)\n",
 				 event_type, fifo_data);
 			goto next;
 		}
@@ -405,7 +493,7 @@ next:
 		i++;
 	}
 	if (i > 0)
-		dev_info(&kbd->client->dev, "FIFO processing done. Processed %d events.\n", i);
+		dev_dbg(&kbd->client->dev, "FIFO processing done. Processed %d events.\n", i);
 }
 
 static void lyra_kbd_process_mouse(struct lyra_kbd_data *kbd)
@@ -413,35 +501,69 @@ static void lyra_kbd_process_mouse(struct lyra_kbd_data *kbd)
 	int ret;
 	s8 delta_x, delta_y;
 	s32 adjusted_x, adjusted_y;
+	s32 final_x = 0, final_y = 0;
 	
-	/* Read mouse X delta */
+	/* Read mouse deltas from hardware (if firmware provides them) */
 	ret = lyra_kbd_read_reg(kbd->client, REG_MOUSE_X);
 	if (ret < 0)
 		return;
 	delta_x = (s8)ret;
 	
-	/* Read mouse Y delta */
 	ret = lyra_kbd_read_reg(kbd->client, REG_MOUSE_Y);
 	if (ret < 0)
 		return;
 	delta_y = (s8)ret;
 	
-	/* Apply speed multiplier */
-	if (delta_x != 0) {
-		adjusted_x = ((s32)delta_x * kbd->mouse_speed_x) / 100;
-		if (adjusted_x == 0 && delta_x != 0)
-			adjusted_x = (delta_x > 0) ? 1 : -1;
-		input_report_rel(kbd->mouse_input, REL_X, adjusted_x);
+	/* Use hardware deltas if available, otherwise synthesize from direction keys */
+	if (delta_x != 0 || delta_y != 0) {
+		/* Hardware-provided movement (e.g., from actual mouse sensor) */
+		if (delta_x != 0) {
+			adjusted_x = ((s32)delta_x * kbd->mouse_speed_x) / 100;
+			if (adjusted_x == 0 && delta_x != 0)
+				adjusted_x = (delta_x > 0) ? 1 : -1;
+			final_x = adjusted_x;
+		}
+		
+		if (delta_y != 0) {
+			adjusted_y = ((s32)delta_y * kbd->mouse_speed_y) / 100;
+			if (adjusted_y == 0 && delta_y != 0)
+				adjusted_y = (delta_y > 0) ? 1 : -1;
+			final_y = adjusted_y;
+		}
+	} else {
+		/* Synthesize movement from direction keys (49-52 in normal mode) */
+		if (kbd->mouse_up_active && kbd->mouse_down_active) {
+			/* Cancelled out */
+			final_y = 0;
+		} else if (kbd->mouse_up_active) {
+			final_y = -(kbd->mouse_speed_y * 2) / 100; /* Negative Y is up */
+		} else if (kbd->mouse_down_active) {
+			final_y = (kbd->mouse_speed_y * 2) / 100; /* Positive Y is down */
+		}
+		
+		if (kbd->mouse_left_active && kbd->mouse_right_active) {
+			/* Cancelled out */
+			final_x = 0;
+		} else if (kbd->mouse_left_active) {
+			final_x = -(kbd->mouse_speed_x * 2) / 100; /* Negative X is left */
+		} else if (kbd->mouse_right_active) {
+			final_x = (kbd->mouse_speed_x * 2) / 100; /* Positive X is right */
+		}
+		
+		/* Apply diagonal speed reduction */
+		if (final_x != 0 && final_y != 0) {
+			final_x = (final_x * 71) / 100; /* ~0.707 for diagonal */
+			final_y = (final_y * 71) / 100;
+		}
 	}
 	
-	if (delta_y != 0) {
-		adjusted_y = ((s32)delta_y * kbd->mouse_speed_y) / 100;
-		if (adjusted_y == 0 && delta_y != 0)
-			adjusted_y = (delta_y > 0) ? 1 : -1;
-		input_report_rel(kbd->mouse_input, REL_Y, adjusted_y);
-	}
+	if (final_x != 0)
+		input_report_rel(kbd->mouse_input, REL_X, final_x);
 	
-	if (delta_x != 0 || delta_y != 0)
+	if (final_y != 0)
+		input_report_rel(kbd->mouse_input, REL_Y, final_y);
+	
+	if (final_x != 0 || final_y != 0)
 		input_sync(kbd->mouse_input);
 }
 
@@ -460,25 +582,30 @@ static void lyra_kbd_sync_modifiers(struct lyra_kbd_data *kbd)
 {
 	int ret;
 	u8 key_status;
-	bool shift, alt;
+	bool ctrl, shift, alt, fn;
 
 	ret = lyra_kbd_read_reg(kbd->client, REG_KEY_STATUS);
 	if (ret < 0)
 		return;
 
 	key_status = (u8)ret;
+	ctrl = (key_status & KEY_STATUS_CTRL_BIT) != 0;
 	shift = (key_status & KEY_STATUS_SHIFT_BIT) != 0;
 	alt = (key_status & KEY_STATUS_ALT_BIT) != 0;
+	fn = (key_status & KEY_STATUS_FN_BIT) != 0;
 
 	/* 
-	 * Report modifier state based on register, not FIFO events.
-	 * We map the single SHIFT bit to KEY_LEFTSHIFT.
+	 * Report all modifier states based on register, not FIFO events.
+	 * CTRL, SHIFT, and ALT map to their respective LEFT variants.
+	 * FN is tracked but not reported to input subsystem (non-standard key).
 	 */
+	input_report_key(kbd->kbd_input, KEY_LEFTCTRL, ctrl);
 	input_report_key(kbd->kbd_input, KEY_LEFTSHIFT, shift);
 	input_report_key(kbd->kbd_input, KEY_LEFTALT, alt);
 	input_sync(kbd->kbd_input);
 	
-	dev_dbg(&kbd->client->dev, "Synced modifiers: shift=%d alt=%d\n", shift, alt);
+	dev_dbg(&kbd->client->dev, "Synced modifiers: ctrl=%d shift=%d alt=%d fn=%d\n",
+		ctrl, shift, alt, fn);
 }
 
 static void lyra_kbd_poll_work(struct work_struct *work)
@@ -496,7 +623,8 @@ static void lyra_kbd_poll_work(struct work_struct *work)
 	int_status = (u8)ret;
 	
 	/* Sync modifiers if hardware reports a change */
-	if (int_status & (INT_STATUS_SHIFT_CHANGE | INT_STATUS_ALT_CHANGE | INT_STATUS_FN_CHANGE))
+	if (int_status & (INT_STATUS_CTRL_CHANGE | INT_STATUS_SHIFT_CHANGE | 
+			  INT_STATUS_ALT_CHANGE | INT_STATUS_FN_CHANGE))
 		lyra_kbd_sync_modifiers(kbd);
 
 	/* Check for FIFO overflow */
@@ -507,8 +635,10 @@ static void lyra_kbd_poll_work(struct work_struct *work)
 	if (int_status & INT_STATUS_KEY_EVENT)
 		lyra_kbd_process_fifo(kbd);
 	
-	/* Process mouse events */
-	if (int_status & INT_STATUS_MOUSE_EVENT)
+	/* Process mouse events or synthesized movement from direction keys */
+	if ((int_status & INT_STATUS_MOUSE_EVENT) || 
+	    kbd->mouse_up_active || kbd->mouse_down_active ||
+	    kbd->mouse_left_active || kbd->mouse_right_active)
 		lyra_kbd_process_mouse(kbd);
 	
 	/* Process power button */
@@ -678,6 +808,7 @@ static int lyra_kbd_setup_input_devices(struct lyra_kbd_data *kbd)
 	__set_bit(REL_X, mouse_input->relbit);
 	__set_bit(REL_Y, mouse_input->relbit);
 	__set_bit(REL_WHEEL, mouse_input->relbit);
+	__set_bit(REL_HWHEEL, mouse_input->relbit);
 	
 	__set_bit(EV_KEY, mouse_input->evbit);
 	__set_bit(BTN_LEFT, mouse_input->keybit);

@@ -1,19 +1,18 @@
 #!/bin/sh
-#
 
 case "$1" in
     start)
-	insmod /usr/lib/ili9341_fb.ko
-
-	dmesg -n 1
+        insmod /usr/lib/ili9341_fb.ko
+        dmesg -n 1
         ;;
     stop)
+        # Module removal will handle backlight now
+        rmmod ili9341_fb 2>/dev/null
         ;;
     *)
         echo "Usage: $0 {start|stop}"
         exit 1
         ;;
 esac
-
 
 exit 0
